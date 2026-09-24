@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type {
   BreakdownItem,
   Category,
@@ -176,34 +176,41 @@ function RegionBars({ items }: { items: BreakdownItem[] }) {
 function ChannelDonut({ items }: { items: BreakdownItem[] }) {
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
-  let offset = 0;
   const colors = ['var(--violet)', 'var(--cyan)', 'var(--blue)'];
+  const segments = items.map((item, index) => {
+    const priorShare = items
+      .slice(0, index)
+      .reduce((total, previous) => total + previous.share, 0);
+    const length = circumference * item.share;
+
+    return {
+      item,
+      index,
+      length,
+      dashOffset: -(circumference * priorShare),
+    };
+  });
 
   return (
     <div className="donut-layout">
       <div className="donut">
         <svg viewBox="0 0 140 140" role="img" aria-label="Participação por canal">
           <circle className="donut-base" cx="70" cy="70" r={radius} />
-          {items.map((item, index) => {
-            const length = circumference * item.share;
-            const dashOffset = -offset;
-            offset += length;
-            return (
-              <circle
-                key={item.label}
-                cx="70"
-                cy="70"
-                r={radius}
-                fill="none"
-                stroke={colors[index]}
-                strokeWidth="16"
-                strokeDasharray={`${length} ${circumference - length}`}
-                strokeDashoffset={dashOffset}
-                strokeLinecap="butt"
-                transform="rotate(-90 70 70)"
-              />
-            );
-          })}
+          {segments.map(({ item, index, length, dashOffset }) => (
+            <circle
+              key={item.label}
+              cx="70"
+              cy="70"
+              r={radius}
+              fill="none"
+              stroke={colors[index]}
+              strokeWidth="16"
+              strokeDasharray={`${length} ${circumference - length}`}
+              strokeDashoffset={dashOffset}
+              strokeLinecap="butt"
+              transform="rotate(-90 70 70)"
+            />
+          ))}
         </svg>
         <div className="donut-center">
           <strong>100%</strong>
@@ -228,24 +235,39 @@ export function Dashboard() {
   const [channel, setChannel] = useState<'all' | Channel>('all');
   const [category, setCategory] = useState<'all' | Category>('all');
   const [data, setData] = useState<DashboardResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [dark, setDark] = useState(true);
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem('pulsebi-theme');
-    setDark(stored ? stored === 'dark' : true);
+  const subscribeTheme = useCallback((callback: () => void) => {
+    window.addEventListener('storage', callback);
+    window.addEventListener('pulsebi-theme-change', callback);
+
+    return () => {
+      window.removeEventListener('storage', callback);
+      window.removeEventListener('pulsebi-theme-change', callback);
+    };
   }, []);
 
+  const theme = useSyncExternalStore(
+    subscribeTheme,
+    () => (window.localStorage.getItem('pulsebi-theme') === 'light' ? 'light' : 'dark'),
+    () => 'dark',
+  );
+
+  const dark = theme === 'dark';
+
+  const toggleTheme = useCallback(() => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    window.localStorage.setItem('pulsebi-theme', nextTheme);
+    window.dispatchEvent(new Event('pulsebi-theme-change'));
+  }, [theme]);
+
   useEffect(() => {
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    window.localStorage.setItem('pulsebi-theme', dark ? 'dark' : 'light');
-  }, [dark]);
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   useEffect(() => {
     const controller = new AbortController();
     const params = new URLSearchParams({ months: String(months), region, channel, category });
 
-    setLoading(true);
     fetch(`/api/analytics?${params.toString()}`, { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error('Falha ao carregar analytics');
@@ -254,8 +276,7 @@ export function Dashboard() {
       .then(setData)
       .catch((error: unknown) => {
         if (error instanceof Error && error.name !== 'AbortError') console.error(error);
-      })
-      .finally(() => setLoading(false));
+      });
 
     return () => controller.abort();
   }, [category, channel, months, region]);
@@ -305,7 +326,7 @@ export function Dashboard() {
               <span className="status-dot" />
               <div><strong>Dados atualizados</strong><small>{updatedAt}</small></div>
             </div>
-            <button className="icon-button" type="button" aria-label="Alternar tema" onClick={() => setDark((value) => !value)}>
+            <button className="icon-button" type="button" aria-label="Alternar tema" onClick={toggleTheme}>
               <Icon name={dark ? 'sun' : 'moon'} />
             </button>
             <a className="primary-button" href={exportUrl}><Icon name="download" /> Exportar CSV</a>
@@ -319,7 +340,7 @@ export function Dashboard() {
           <label><span>Categoria</span><select value={category} onChange={(event) => setCategory(event.target.value as 'all' | Category)}><option value="all">Todas</option>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></label>
         </section>
 
-        {loading && !data ? (
+        {!data ? (
           <section className="loading-grid" aria-label="Carregando dashboard">
             {Array.from({ length: 8 }, (_, index) => <div className="skeleton" key={index} />)}
           </section>
