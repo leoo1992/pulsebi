@@ -21,12 +21,24 @@ export interface MonthlyPoint {
   label: string;
   revenue: number;
   target: number;
+  orders: number;
+  customers: number;
+  margin: number;
+}
+
+export interface ForecastPoint {
+  month: string;
+  label: string;
+  revenue: number;
 }
 
 export interface BreakdownItem {
   label: string;
   revenue: number;
   share: number;
+  orders: number;
+  customers: number;
+  margin: number;
 }
 
 export interface CategoryRow {
@@ -35,6 +47,12 @@ export interface CategoryRow {
   orders: number;
   margin: number;
   customers: number;
+}
+
+export interface FunnelStage {
+  label: string;
+  value: number;
+  conversion: number;
 }
 
 export interface DashboardResponse {
@@ -49,9 +67,11 @@ export interface DashboardResponse {
     customers: Kpi;
   };
   monthly: MonthlyPoint[];
+  forecast: ForecastPoint[];
   regions: BreakdownItem[];
   channels: BreakdownItem[];
   categories: CategoryRow[];
+  funnel: FunnelStage[];
   insight: {
     title: string;
     body: string;

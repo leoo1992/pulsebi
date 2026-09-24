@@ -1,6 +1,6 @@
 {
   "name": "pulsebi-revenue-intelligence",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "packageManager": "npm@10.9.2",
   "scripts": {
@@ -8,12 +8,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "agent:vercel": "npx plugins add vercel/vercel-plugin"
   },
   "dependencies": {
     "next": "16.3.6",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "react-router": "7.18.4",
+    "react-router-dom": "7.18.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
@@ -25,5 +28,7 @@
     "tailwindcss": "4.3.3",
     "typescript": "^5.9.2"
   },
-  "engines": { "node": ">=22.0.0" }
+  "engines": {
+    "node": ">=22.0.0"
+  }
 }

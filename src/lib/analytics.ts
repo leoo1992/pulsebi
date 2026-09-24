@@ -108,6 +108,12 @@ function sum(records: SaleRecord[], key: 'revenue' | 'cost' | 'orders' | 'custom
   return records.reduce((total, record) => total + record[key], 0);
 }
 
+function marginOf(records: SaleRecord[]) {
+  const revenue = sum(records, 'revenue');
+  const cost = sum(records, 'cost');
+  return revenue > 0 ? (revenue - cost) / revenue : 0;
+}
+
 function filterDimension(records: SaleRecord[], filters: DashboardFilters) {
   return records
     .filter((record) => filters.region === 'all' || record.region === filters.region)
@@ -133,14 +139,56 @@ function computeBreakdown<T extends Region | Channel>(
 
   return values
     .map((value) => {
-      const revenue = sum(records.filter((record) => selector(record) === value), 'revenue');
+      const slice = records.filter((record) => selector(record) === value);
+      const revenue = sum(slice, 'revenue');
+
       return {
         label: value,
         revenue,
         share: total > 0 ? revenue / total : 0,
+        orders: sum(slice, 'orders'),
+        customers: sum(slice, 'customers'),
+        margin: marginOf(slice),
       };
     })
     .sort((a, b) => b.revenue - a.revenue);
+}
+
+function buildForecast(monthlyRevenue: number[]) {
+  const recent = monthlyRevenue.slice(-4);
+  const changes = recent.slice(1).map((value, index) => {
+    const prior = recent[index] ?? value;
+    return prior > 0 ? (value - prior) / prior : 0;
+  });
+  const averageGrowth = changes.length
+    ? changes.reduce((total, value) => total + value, 0) / changes.length
+    : 0;
+  const cappedGrowth = Math.max(-0.05, Math.min(0.08, averageGrowth));
+
+  let lastValue = recent.at(-1) ?? 0;
+  const lastMonth = MONTHS.at(-1);
+  const baseDate = lastMonth
+    ? new Date(`${lastMonth.key}-01T00:00:00.000Z`)
+    : new Date(Date.UTC(2026, 8, 1));
+
+  return Array.from({ length: 3 }, (_, index) => {
+    const date = new Date(
+      Date.UTC(baseDate.getUTCFullYear(), baseDate.getUTCMonth() + index + 1, 1),
+    );
+    lastValue = Math.round(lastValue * (1 + cappedGrowth));
+
+    return {
+      month: date.toISOString().slice(0, 7),
+      label: new Intl.DateTimeFormat('pt-BR', {
+        month: 'short',
+        year: '2-digit',
+        timeZone: 'UTC',
+      })
+        .format(date)
+        .replace('.', ''),
+      revenue: lastValue,
+    };
+  });
 }
 
 export function getDashboardData(filters: DashboardFilters): DashboardResponse {
@@ -174,10 +222,8 @@ export function getDashboardData(filters: DashboardFilters): DashboardResponse {
   const previousTicket = previousOrders > 0 ? previousRevenue / previousOrders : 0;
 
   const monthly = MONTHS.slice(currentStart).map((month, index) => {
-    const monthRevenue = sum(
-      current.filter((record) => record.monthIndex === month.index),
-      'revenue',
-    );
+    const slice = current.filter((record) => record.monthIndex === month.index);
+    const monthRevenue = sum(slice, 'revenue');
     const baseline =
       previousRevenue > 0 ? previousRevenue / filters.months : revenue / filters.months;
     const target = Math.round(baseline * (1.035 + index * 0.006));
@@ -187,9 +233,13 @@ export function getDashboardData(filters: DashboardFilters): DashboardResponse {
       label: month.label,
       revenue: monthRevenue,
       target,
+      orders: sum(slice, 'orders'),
+      customers: sum(slice, 'customers'),
+      margin: marginOf(slice),
     };
   });
 
+  const forecast = buildForecast(monthly.map((item) => item.revenue));
   const regions = computeBreakdown(current, REGIONS, (record) => record.region);
   const channels = computeBreakdown(current, CHANNELS, (record) => record.channel);
 
@@ -207,6 +257,21 @@ export function getDashboardData(filters: DashboardFilters): DashboardResponse {
         categoryRevenue > 0 ? (categoryRevenue - categoryCost) / categoryRevenue : 0,
     };
   }).sort((a, b) => b.revenue - a.revenue);
+
+  const funnelBase = Math.max(orders, 1);
+  const funnelValues = [
+    { label: 'Leads', value: Math.round(funnelBase * 4.8) },
+    { label: 'Oportunidades', value: Math.round(funnelBase * 2.15) },
+    { label: 'Pedidos', value: orders },
+    { label: 'Recompra', value: Math.round(funnelBase * 0.34) },
+  ];
+  const funnel = funnelValues.map((stage, index) => ({
+    ...stage,
+    conversion:
+      index === 0
+        ? 1
+        : stage.value / Math.max(funnelValues[index - 1]?.value ?? stage.value, 1),
+  }));
 
   const revenueDelta =
     previousRevenue > 0 ? (revenue - previousRevenue) / previousRevenue : 0;
@@ -244,9 +309,11 @@ export function getDashboardData(filters: DashboardFilters): DashboardResponse {
       customers: makeKpi('Clientes', customers, previousCustomers, 'number'),
     },
     monthly,
+    forecast,
     regions,
     channels,
     categories,
+    funnel,
     insight,
   };
 }
