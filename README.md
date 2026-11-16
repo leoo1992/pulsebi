@@ -1,5 +1,7 @@
 # PulseBI — Revenue Intelligence
 
+[English version](README.en.md)
+
 Aplicação de Business Intelligence com aparência de produto real, criada para demonstrar engenharia frontend, APIs analíticas, visualização de dados, self-service BI e experiência responsiva.
 
 ## Stack
