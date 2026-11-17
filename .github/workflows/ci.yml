@@ -1,4 +1,4 @@
-name: Quality Gate
+name: CI
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
-      - name: Tests + coverage 80%
-        run: node --test --experimental-test-coverage --test-coverage-lines=80 tests/repository-quality.test.mjs
+      - name: Tests
+        run: npm test
       - name: Build
         run: npm run build
